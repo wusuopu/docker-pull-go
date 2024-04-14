@@ -141,15 +141,26 @@ func (i *Image) GetToken(action string) string {
 	return i.pushToken
 }
 
-func (i *Image) FetchManifest() *fastjson.Value {
+func (i *Image) FetchManifest(digest string) *fastjson.Value {
 	token := i.GetToken("pull")
-	manifestUrl := fmt.Sprintf("%s://%s/v2/%s/manifests/%s", i.protocol, i.Registry, i.Repository, i.Tag)
+	if len(digest) == 0 {
+		digest = i.Tag
+	}
+	manifestUrl := fmt.Sprintf("%s://%s/v2/%s/manifests/%s", i.protocol, i.Registry, i.Repository, digest)
 
 	client := resty.New()
 	client.SetTimeout(10 * time.Second)
 
 	req := client.NewRequest()
 	req.SetHeader("Authorization", fmt.Sprintf("Bearer %s", token))
+	headers := map[string][]string{
+		"Accept": []string{
+			"application/vnd.docker.distribution.manifest.v2+json",
+			"application/vnd.docker.distribution.manifest.list.v2+json",
+			"application/vnd.docker.distribution.manifest.v1+json",
+		},
+	}
+	req.SetHeaderMultiValues(headers)
 	resp, err := req.Get(manifestUrl)
 	ThrowIfError(err)
 
