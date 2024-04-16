@@ -18,6 +18,7 @@ import (
 	"github.com/valyala/fastjson"
 )
 
+// https://docker-docs.uclv.cu/registry/spec/api/#pulling-an-image
 func PullImage(image *Image, dir string) error {
 	fmt.Printf("Pull Image %s/%s:%s to %s\n", image.Registry, image.Repository, image.Tag, dir)
 

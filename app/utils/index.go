@@ -135,7 +135,7 @@ func (i *Image) GetToken(action string) string {
 	}
 
 	if len(i.pushToken) == 0 {
-		i.pushToken = i.requestToken("push")
+		i.pushToken = i.requestToken("pull,push")
 	}
 
 	return i.pushToken
