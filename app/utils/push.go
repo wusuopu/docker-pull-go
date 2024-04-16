@@ -127,6 +127,7 @@ func pushDir(image *Image, dir string) (err error) {
 	for idx, item := range layers {
 		name, _ := item.StringBytes()
 		layerFilename := path.Join(dir, string(name))
+		fmt.Printf("Progress (%d/%d) #####\n", idx, len(layers))
 		blobDigest, blobSize, err = uploadLayer(image, layerFilename)
 		if err != nil {
 			return

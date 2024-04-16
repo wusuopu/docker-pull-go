@@ -63,7 +63,7 @@ func pullV1(image *Image, manifest *fastjson.Value, dir string) error {
 		layerJson := history[index]
 		layerId := string(layerJson.GetStringBytes("id"))
 
-		fmt.Printf("Downloading layer Id: %s hash: %s\n", layerId, blobSum)
+		fmt.Printf("(%d/%d) Downloading layer Id: %s hash: %s\n", index + 1, len(fsLayers), layerId, blobSum)
 
 		layerDir := path.Join(targetPath, layerId)
 		err := ensureDir(layerDir)
@@ -174,7 +174,7 @@ func pullV2(image *Image, manifest *fastjson.Value, dir string) error {
 		blobDigest := string(item.GetStringBytes("digest"))
 		fakeLayerid = fmt.Sprintf("%x", sha256.Sum256([]byte(parentId+"\n"+blobDigest+"\n")))
 
-		fmt.Printf("Downloading layer Id: %s hash: %s\n", fakeLayerid, blobDigest)
+		fmt.Printf("(%d/%d) Downloading layer Id: %s hash: %s\n", index + 1, len(layers),  fakeLayerid, blobDigest)
 
 		manifestJson.Get("0", "Layers").SetArrayItem(index, a.NewString(path.Join(fakeLayerid, "layer.tar")))
 
