@@ -5,6 +5,7 @@ go 1.22.2
 require (
 	github.com/alecthomas/kong v0.9.0
 	github.com/go-resty/resty/v2 v2.12.0
+	github.com/klauspost/compress v1.17.8
 	github.com/samber/lo v1.39.0
 	github.com/stretchr/testify v1.9.0
 	github.com/valyala/fastjson v1.6.4

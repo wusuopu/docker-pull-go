@@ -14,6 +14,7 @@ import (
 	"time"
 
 	resty "github.com/go-resty/resty/v2"
+	"github.com/klauspost/compress/zstd"
 	"github.com/samber/lo"
 	"github.com/valyala/fastjson"
 )
@@ -174,7 +175,7 @@ func pullV2(image *Image, manifest *fastjson.Value, dir string) error {
 		blobDigest := string(item.GetStringBytes("digest"))
 		fakeLayerid = fmt.Sprintf("%x", sha256.Sum256([]byte(parentId+"\n"+blobDigest+"\n")))
 
-		fmt.Printf("(%d/%d) Downloading layer Id: %s hash: %s\n", index + 1, len(layers),  fakeLayerid, blobDigest)
+		fmt.Printf("[%d/%d (%d)] Downloading layer Id: %s hash: %s\n", index + 1, len(layers), item.GetInt64("size"), fakeLayerid, blobDigest)
 
 		manifestJson.Get("0", "Layers").SetArrayItem(index, a.NewString(path.Join(fakeLayerid, "layer.tar")))
 
@@ -204,6 +205,10 @@ func pullV2(image *Image, manifest *fastjson.Value, dir string) error {
 		os.WriteFile(path.Join(layerDir, "json"), (jsonData.MarshalTo(nil)), fs.ModePerm)
 		parentId = fakeLayerid
 
+		// https://github.com/opencontainers/image-spec/blob/main/layer.md
+		// 检查 mediaType
+		mediaType := string(item.GetStringBytes("mediaType"))
+
 		layerTarFile := path.Join(layerDir, "layer.tar")
 		stat, err := os.Stat(layerTarFile)
 		if err == nil && stat.Size() >= item.GetInt64("size") {
@@ -212,10 +217,21 @@ func pullV2(image *Image, manifest *fastjson.Value, dir string) error {
 			return
 		}
 
-		err = fetchBlob(image, blobDigest, layerTarFile + ".gz", item.GetInt64("size"))
+		savedFile := layerTarFile
+		if strings.HasSuffix(mediaType, "gzip") {
+			savedFile = layerTarFile + ".gz"
+		} else if strings.HasSuffix(mediaType, "zstd") {
+			savedFile = layerTarFile + ".zstd"
+		}
+		err = fetchBlob(image, blobDigest, savedFile, item.GetInt64("size"))
 		ThrowIfError(err)
 
-		fp1, err := os.Open(layerTarFile + ".gz")
+		if strings.HasSuffix(mediaType, ".tar") {
+			// layer 文件没有压缩
+			return
+		}
+
+		fp1, err := os.Open(savedFile)
 		ThrowIfError(err)
 		defer func () {
 			fp1.Close()
@@ -227,12 +243,19 @@ func pullV2(image *Image, manifest *fastjson.Value, dir string) error {
 			fp2.Close()
 		}()
 
-		gzipFile, err := gzip.NewReader(fp1)
-		ThrowIfError(err)
-		io.Copy(fp2, gzipFile)
-		gzipFile.Close()
+		if strings.HasSuffix(mediaType, "gzip") {
+			gzipFile, err := gzip.NewReader(fp1)
+			ThrowIfError(err)
+			io.Copy(fp2, gzipFile)
+			gzipFile.Close()
+		} else if strings.HasSuffix(mediaType, "zstd") {
+			zFile, err := zstd.NewReader(fp1)
+			ThrowIfError(err)
+			io.Copy(fp2, zFile)
+			zFile.Close()
+		}
 
-		os.Remove(layerTarFile + ".gz")
+		os.Remove(savedFile)
 	})
 
 	// 创建 repositories 文件
