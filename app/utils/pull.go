@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	urlLib "net/url"
 	"os"
 	"path"
 	"strconv"
@@ -284,22 +285,38 @@ func pullV2(image *Image, manifest *fastjson.Value, dir string) error {
 // 检测 blob 的下载地址
 func detectBlobUrl(image *Image, blobSum string) string {
 	baseUrl := fmt.Sprintf("%s://%s", image.protocol, image.Registry)
+	// 从官方地址下载
+	originalUrl := fmt.Sprintf("%s/v2/%s/blobs/%s", baseUrl, image.Repository, blobSum)
+
 	if image.Registry == "registry-1.docker.io" && len(image.mirror) > 0 && strings.HasPrefix(image.mirror, "http") {
 		// 从 mirror 下载 image blob
 		token := image.GetToken("pull")
-		baseUrl = image.mirror
-		url := fmt.Sprintf("%s/v2/%s/blobs/%s", baseUrl, image.Repository, blobSum)
-		resp, err := resty.New().SetTimeout(5 * time.Second).R().
+		url := fmt.Sprintf("%s/v2/%s/blobs/%s", image.mirror, image.Repository, blobSum)
+		resp, _ := resty.New().SetTimeout(5 * time.Second).
+		 	// 不自动重定向
+			SetRedirectPolicy(resty.NoRedirectPolicy()).R().
 			SetHeader("Authorization", fmt.Sprintf("Bearer %s", token)).
 			Head(url)
 
-		if err == nil && resp.StatusCode() < 300 {
+		if resp.StatusCode() >= 200 && resp.StatusCode() < 400 {
+			proxy := os.Getenv("DOCKER_BLOB_REVERSE_PROXY")
+			if proxy != "" && strings.HasPrefix(proxy, "http") && resp.StatusCode() >= 300 {
+				// 重定向到新的地址
+				newUrl := resp.Header().Get("location")
+
+				parsedURL, err := urlLib.Parse(newUrl)
+				if err != nil {
+					return originalUrl
+				}
+				parsedURL.Scheme = ""
+				parsedURL.Host = ""
+				url = proxy + parsedURL.String()
+			}
 			return url
 		}
 	}
-	// 从官方地址下载
-	url := fmt.Sprintf("%s/v2/%s/blobs/%s", baseUrl, image.Repository, blobSum)
-	return url
+
+	return originalUrl
 }
 func fetchBlob(image *Image, blobSum string, output string, totalSize int64) error {
 	if totalSize > 0 {

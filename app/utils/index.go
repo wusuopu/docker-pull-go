@@ -2,6 +2,7 @@ package utils
 
 import (
 	"fmt"
+	"os"
 	"regexp"
 	"strings"
 	"time"
@@ -89,11 +90,25 @@ func (i *Image) ParseImage(image string) {
 	i.Namespace = namespace
 }
 
+func (i *Image) setApiProxy(c *resty.Client) {
+	proxy := os.Getenv("DOCKER_API_PROXY")
+	if proxy != "" {
+		c.SetProxy(proxy)
+	}
+}
+
 func (i *Image) requestToken(action string) string {
 	// https://distribution.github.io/distribution/spec/auth/token/
-	manifestUrl := fmt.Sprintf("%s://%s/v2/%s/manifests/%s", i.protocol, i.Registry, i.Repository, i.Tag)
+	// 使用指定的反向代理
+	baseUrl := fmt.Sprintf("%s://%s", i.protocol, i.Registry)
+	proxy := os.Getenv("DOCKER_REGISTRY_REVERSE_PROXY")
+	if proxy != "" && strings.HasPrefix(proxy, "http") {
+		baseUrl = proxy
+	}
+	manifestUrl := fmt.Sprintf("%s/v2/%s/manifests/%s", baseUrl, i.Repository, i.Tag)
 
 	client := resty.New()
+	i.setApiProxy(client)
 	// client.SetTLSClientConfig(&tls.Config{InsecureSkipVerify: true})
 	req := client.NewRequest()
 	client.SetTimeout(10 * time.Second)
@@ -113,6 +128,10 @@ func (i *Image) requestToken(action string) string {
 		ThrowIfError(err)
 	}
 	url := strings.Split(wwwAuth, `"`)[1]
+	proxy = os.Getenv("DOCKER_AUTH_REVERSE_PROXY")
+	if proxy != "" && strings.HasPrefix(proxy, "http") {
+		url = proxy
+	}
 	req = client.NewRequest()
 	req.SetQueryParam("service", regexp.MustCompile(`service="([^"]+)"`).FindStringSubmatch(wwwAuth)[1])
 	req.SetQueryParam("scope", fmt.Sprintf("repository:%s:%s", i.Repository, action))
@@ -146,9 +165,16 @@ func (i *Image) FetchManifest(digest string) *fastjson.Value {
 	if len(digest) == 0 {
 		digest = i.Tag
 	}
-	manifestUrl := fmt.Sprintf("%s://%s/v2/%s/manifests/%s", i.protocol, i.Registry, i.Repository, digest)
+	// 使用指定的反向代理
+	baseUrl := fmt.Sprintf("%s://%s", i.protocol, i.Registry)
+	proxy := os.Getenv("DOCKER_REGISTRY_REVERSE_PROXY")
+	if proxy != "" && strings.HasPrefix(proxy, "http") {
+		baseUrl = proxy
+	}
+	manifestUrl := fmt.Sprintf("%s/v2/%s/manifests/%s", baseUrl, i.Repository, digest)
 
 	client := resty.New()
+	i.setApiProxy(client)
 	client.SetTimeout(10 * time.Second)
 
 	req := client.NewRequest()

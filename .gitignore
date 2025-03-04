@@ -48,3 +48,5 @@ tags
 # End of https://www.toptal.com/developers/gitignore/api/go,vim
 app/tmp/
 app/main
+
+app/.env
